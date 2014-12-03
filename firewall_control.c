@@ -33,14 +33,15 @@ void usage()
 
 int sniffer_send_command(struct sniffer_flow_entry *flow)
 {
-    // printf("source ip:%x; dst_ip:%x; src_port%d; dst_port%d \n",flow->src_ip,flow->dst_ip,flow->src_port,flow->dst_port);
+    printf("interface is %s, source ip:%x; dst_ip:%x; src_port%d; dst_port%d \n",flow->interface,flow->src_ip,flow->dst_ip,flow->src_port,flow->dst_port);
     int fd;
     if((fd = open(flow->dev_file,O_RDWR))<0 )
     {
         perror("Cannot open the device!");
         exit(1);
     }
-    ioctl(fd,cmd,flow);
+    if( ioctl(fd,cmd,flow)<0)
+        printf("err\n");
     return 0;
 }
 void init_flow(struct sniffer_flow_entry* flow)
@@ -52,7 +53,9 @@ void init_flow(struct sniffer_flow_entry* flow)
     flow->action = NONE;
     flow->dev_file = dev_file;
     flow->proto = TCP;
-
+    flow->direction = ALL;
+    flow->interface = calloc(10,sizeof(char));
+    strcpy(flow->interface ,"ALL");
 }
 int main(int argc, char **argv)
 {
@@ -114,8 +117,10 @@ int main(int argc, char **argv)
             break;
         //===========================================
             case 2:     //interface
-                flow -> interface = optarg;
-                break;
+            if(strlen(optarg)<=9)
+                strcpy(flow->interface,optarg);
+            printf("strlen :%d\n",strlen(optarg) );
+            break;
         //===========================================
             case 3:     //protocol
             if(strcmp(optarg,"tcp")==0){

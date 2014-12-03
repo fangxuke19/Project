@@ -311,7 +311,10 @@ static long sniffer_fs_ioctl(struct file *file, unsigned int cmd, unsigned long 
         new_node->dst_port = converted_arg->dst_port;
         new_node->action = converted_arg->action;
         new_node->direction = converted_arg->direction;
-        new_node->interface = converted_arg ->interface;
+        new_node->interface = vmalloc(10*sizeof(char));
+        strcpy(new_node->interface,converted_arg->interface);
+        if(new_node->interface)
+            printk(KERN_DEBUG "INTERFACE:%s", new_node->interface);
         new_node->proto = converted_arg->proto;
     switch(cmd) {
     case SNIFFER_FLOW_ENABLE:
@@ -343,7 +346,7 @@ static int sniffer_proc_show(struct seq_file *m, void *v) {
     struct node* pos;
     int count =1;
     unsigned char ip[4];
-    seq_printf(m, "      [command] [proto] [src_ip]       [src_port]  [dst_ip]       [dst_port] [action]\n");
+    seq_printf(m, "      [command] [proto]  [interface] [src_ip]       [src_port]  [dst_ip]       [dst_port] [action]\n");
     list_for_each_entry(pos,&rule_head,list)
     {
         int max_width = 20;
@@ -361,6 +364,8 @@ static int sniffer_proc_show(struct seq_file *m, void *v) {
         {
              seq_printf(m,"   ICMP");
         }
+        seq_printf(m,"   %s",pos->interface);
+        
         if(pos->src_ip == 0)
             seq_printf(m,"   any");
         else
@@ -426,14 +431,14 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
     int direction=OUT;
    // Key* key = vmalloc(sizeof(Key));
     struct net_device *dev= outdev;
-    // if(indev!= NULL){
-    //     direction = IN;
-    //     dev = indev;
+     if(indev!= NULL){
+        direction = IN;
+         dev = indev;
     //     printk("In device :%s\n", dev->name);
-    // }
-    // if(outdev!=NULL){
+     }
+     //if(outdev!=NULL){
     //     printk("Out device: %s\n",dev->name);
-    // }
+     //}
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcph = ip_tcp_hdr(iph);
         // key->src_ip = ntohl(iph->saddr);
@@ -462,8 +467,8 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 && (pos->src_port == tcph->source || pos->src_port == 0)\
                 && (pos->dst_port == tcph->dest || pos->dst_port == 0) \
                 && (pos->proto == TCP) \
-                && (pos->direction == direction)\
-                && (strcmp(pos->interface,dev->name)==0))
+                && (pos->direction == direction || pos->direction == ALL)\
+                )//&& (strcmp(pos->interface,dev->name)==0))
             {
                 if(pos->action == DPI)
                 {
@@ -521,8 +526,8 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
                 && (pos->dst_ip == ntohl(iph->daddr) || pos->dst_ip == 0)\
                 && (pos->proto == ICMP)
-                && (pos->direction == direction)\
-                && (strcmp(pos->interface,dev->name)==0))
+                && (pos->direction == direction || pos->direction == ALL)\
+                )//&& (strcmp(pos->interface,dev->name)==0))
             {
                 if(pos->mode == 0)
                 {
@@ -536,15 +541,21 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
     if(iph->protocol == IPPROTO_UDP)
     {
         struct udphdr *udp_h = ip_udp_hdr(iph);
+        if(dev == NULL) 
+        {
+            printk(KERN_DEBUG "bug!!!!\n");
+            return NF_DROP;
+        }
         list_for_each_entry(pos,&rule_head,list)
         {
+            printk  (KERN_DEBUG  "dev->name:%s\n",dev->name);
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
                 && (pos->dst_ip == ntohl(iph->daddr) || pos->dst_ip == 0)\
                 && (pos->src_port == udp_h->source || pos->src_port == 0)\
                 && (pos->dst_port == udp_h->dest || pos->dst_port == 0) \
                 && (pos->proto == UDP)
-                && (pos->direction == direction)\
-                && (strcmp(pos->interface,dev->name)==0))
+                && (pos->direction == direction || pos->direction == ALL)\
+                && (strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0) )
             {
                  if(pos->mode == 0)
                 {

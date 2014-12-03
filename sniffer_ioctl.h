@@ -9,6 +9,7 @@ struct sniffer_flow_entry {
     int direction;
     #define IN -1
     #define OUT -2
+    #define ALL 0
     char* interface;
   	int action;
     int proto;
