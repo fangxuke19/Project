@@ -424,16 +424,16 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
     struct iphdr *iph = ip_hdr(skb);
     node* pos;
     int direction=OUT;
-    Key* key = vmalloc(sizeof(Key));
+   // Key* key = vmalloc(sizeof(Key));
     struct net_device *dev= outdev;
-    if(indev!= NULL){
-        direction = IN;
-        dev = indev;
-        printk("In device :%s\n", dev->name);
-    }
-    if(outdev!=NULL){
-        printk("Out device: %s\n",dev->name);
-    }
+    // if(indev!= NULL){
+    //     direction = IN;
+    //     dev = indev;
+    //     printk("In device :%s\n", dev->name);
+    // }
+    // if(outdev!=NULL){
+    //     printk("Out device: %s\n",dev->name);
+    // }
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcph = ip_tcp_hdr(iph);
         // key->src_ip = ntohl(iph->saddr);
