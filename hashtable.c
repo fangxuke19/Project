@@ -105,13 +105,19 @@ int main(int argc, char** argv){
 		v->value = i*10;
 		put(i,v,new_table);
 	}
-	delete(0,new_table);
-	for(i=9;i>=0;i--)
+	for(i=20;i>=0;i--)
 	{
+		delete(i,new_table);
 		Value* v_get = get(i,new_table);
 		if(v_get!=NULL)
 			printf("%d\n",v_get->value );
 	}
+	Value* v = (Value*)calloc(1,sizeof(Value*));
+	v->value = i*10;
+		put(i,v,new_table);
+	Value* v_get = get(i,new_table);
+		if(v_get!=NULL)
+			printf("%d\n",v_get->value );
 	free_table(new_table);
 	return 0;
 }

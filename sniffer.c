@@ -89,7 +89,14 @@ HashTable* create(int size)
         i++;
     size = PRIMES[i];
     HashTable* the_table =vmalloc(sizeof(HashTable));
-    the_table->table = (Node **)vmalloc(size*sizeof(Node*));
+    memset(the_table,0,sizeof(HashTable));
+    the_table->table = (table_Node **)vmalloc(size*sizeof(table_Node*));
+    memset(the_table->table,0,sizeof(table_Node*));
+    i=0;
+    for(;i<size;i++)
+    {
+        the_table->table[i] =NULL;
+    }
     the_table->size = size;
     the_table->number_of_pairs = 0;
     return the_table;
@@ -112,20 +119,20 @@ int contains(Key* key,HashTable* hashtable)
 }
 Value* get(Key* key,HashTable* hashtable)
 {
-   //  printk(KERN_DEBUG "88888888888888!!!!!!!!!! \n");
+    //printk(KERN_DEBUG "88888888888888!!!!!!!!!! \n");
     if(hashtable == NULL) return NULL;
      //printk(KERN_DEBUG "999999999999!!!!!!!!!! \n");
     uint32_t hash_v =compute_hash_value(key,hashtable);
      //printk(KERN_DEBUG "101010101010101!!!!!!!!!! \n");
-    Node* node = hashtable->table[hash_v];
+    table_Node* node = hashtable->table[hash_v];
     //printk(KERN_DEBUG "AAAAAAAAAAAAAAAAA!!!!!!!!!! \n");
     //if(node==NULL)
     //printk(KERN_DEBUG "NODE IS WRONG!!!!!!!!!!!! \n");   
     while(node!=NULL)
     {
-      //  printk(KERN_DEBUG "IN WHILE !!!!!!!!!!!!!!!! \n");   
-        //  if(!node->key)
-    //printk(KERN_DEBUG "NODE KEY IS WRONG!!!!!!!!!!!! \n");   
+       // //printk(KERN_DEBUG "IN WHILE !!!!!!!!!!!!!!!! \n");   
+          //if(node ==NULL || node->key == NULL)
+            // //printk(KERN_DEBUG "NODE KEY IS WRONG!!!!!!!!!!!! \n");   
         if(compare_keys(node->key,key))
             return node->value;
         node = node->next;
@@ -139,8 +146,9 @@ int put(Key* key, Value* value,HashTable* hashtable)
     if(hashtable==NULL) return -1;
     hashtable->number_of_pairs++;
     hash_v =compute_hash_value(key,hashtable);
-    Node* new_node = (Node*)kmalloc(sizeof(Node),GFP_ATOMIC);
-    Node* temp = hashtable->table[hash_v];
+    table_Node* new_node = (table_Node*)kmalloc(sizeof(table_Node),GFP_ATOMIC);
+    memset(new_node,0,sizeof(table_Node));
+    table_Node* temp = hashtable->table[hash_v];
     new_node->value = value;
     new_node->next = temp;
     new_node->key = key;
@@ -151,12 +159,12 @@ void delete(Key* key, HashTable* hashtable)
 {
     if(hashtable == NULL) return;
     uint32_t hash_v =compute_hash_value(key,hashtable);
-    Node* node = hashtable->table[hash_v];
+    table_Node* node = hashtable->table[hash_v];
         
     if(node!=NULL && compare_keys(key,node->key)==1)
     {
         //printk(KERN_DEBUG "DELETING HEAD !!!!!!!!!!!!!!!! \n");   
-        Node* temp = node->next;
+        table_Node* temp = node->next;
         //printk(KERN_DEBUG "FFFFFFFFFFFFFF !!!!!!!!!!!!!!!! \n");   
         kfree(node->value);
         //printk(KERN_DEBUG "GGGGGGGGGGG !!!!!!!!!!!!!!!! \n");   
@@ -168,13 +176,13 @@ void delete(Key* key, HashTable* hashtable)
         hashtable->number_of_pairs--;
         return;
     }
-    Node* prev = node;
-    Node* cur = prev->next;
+    table_Node* prev = node;
+    table_Node* cur = prev->next;
     while(cur!=NULL)
     {
         if(compare_keys(cur->key, key))
         {
-          //  printk(KERN_DEBUG "DELETING !!!!!!!!!!!!!!!! \n");   
+           //printk(KERN_DEBUG "DELETING !!!!!!!!!!!!!!!! \n");   
             prev->next = cur->next;
             //printk(KERN_DEBUG "QQQQQQQQQQQQQQQ!!!!!!!!!!!!!!!! \n");   
             kfree(cur->value);
@@ -197,13 +205,13 @@ uint32_t compute_hash_value(Key* key, HashTable* hashtable)
 }
 int compare_keys(Key* this, Key* other)
 {
-     printk(KERN_DEBUG "IN THE COMPARE !!!!!!!!!!!!!!!! \n");   
+     // //printk(KERN_DEBUG "IN THE COMPARE !!!!!!!!!!!!!!!! \n");   
     if( this->proto == other->proto &&this->src_port == other->src_port && this->dst_port == other->dst_port && this->dst_ip == other->dst_ip && this->src_ip == other->src_ip)
       {
-         printk(KERN_DEBUG " COMPARing !!!!!!!!!!!!!!!! \n");   
+         // //printk(KERN_DEBUG " COMPARing !!!!!!!!!!!!!!!! \n");   
         return 1;   
       }  
-           printk(KERN_DEBUG " COMPARing +++!!!!!!!!!!!!!!!! \n");     
+           // //printk(KERN_DEBUG " COMPARing +++!!!!!!!!!!!!!!!! \n");     
     return 0;
     
 }
@@ -213,8 +221,8 @@ void free_table(HashTable* hashtable)
     int i=0;
     for(;i<hashtable->size;i++)
     {
-        Node* node = hashtable->table[i];
-        Node* temp;
+        table_Node* node = hashtable->table[i];
+        table_Node* temp;
         while(node!=NULL)
         {
             temp = node;
@@ -246,16 +254,16 @@ sniffer_fs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
     struct skb_list* n;
    // if (down_interruptible(&dev_sem))
    //      return -ERESTARTSYS;
-   //  printk(KERN_DEBUG "where are here");
+    //printk(KERN_DEBUG "where are here");
    //  while(list_empty(&skbs))
    //  {
    //      up(&dev_sem);
    //     if (file->f_flags & O_NONBLOCK)
      //       return -EAGAIN;
-      //  printk(KERN_DEBUG "going to sleep");
+       //printk(KERN_DEBUG "going to sleep");
         if(atomic_read(&refcnt)>0)
             return -EBUSY;
-         printk(KERN_DEBUG "refcnt%d",atomic_read(&refcnt));
+         // //printk(KERN_DEBUG "refcnt%d",atomic_read(&refcnt));
          atomic_set(&refcnt,1);
         if (wait_event_interruptible(readqueue, (!list_empty(&skbs))))
         {
@@ -289,12 +297,12 @@ static int sniffer_fs_open(struct inode *inode, struct file *file)
     int cindex = iminor(inode);
 
     if (!cdev) {
-        printk(KERN_ERR "cdev error\n");
+        // //printk(KERN_ERR "cdev error\n");
         return -ENODEV;
     }
 
     if (cindex != 0) {
-        printk(KERN_ERR "Invalid cindex number %d\n", cindex);
+        // //printk(KERN_ERR "Invalid cindex number %d\n", cindex);
         return -ENODEV;
     }
 
@@ -327,10 +335,10 @@ static long sniffer_fs_ioctl(struct file *file, unsigned int cmd, unsigned long 
     
         //INIT_LIST_HEAD(&(new_node->list));
         new_node->src_ip = converted_arg->src_ip;
-       //  printk(KERN_DEBUG "++++++++src_ip:%x\n",converted_arg->src_ip);
+        //printk(KERN_DEBUG "++++++++src_ip:%x\n",converted_arg->src_ip);
         new_node->dst_ip = converted_arg->dst_ip;
         new_node->src_port = converted_arg->src_port;
-       // printk(KERN_DEBUG "++++++++src_port:%x\n",converted_arg->src_port);
+       //printk(KERN_DEBUG "++++++++src_port:%x\n",converted_arg->src_port);
         new_node->dst_port = converted_arg->dst_port;
         new_node->action = converted_arg->action;
         new_node->direction = converted_arg->direction;
@@ -455,20 +463,21 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         const struct net_device *indev, const struct net_device *outdev,
         int (*okfn) (struct sk_buff*))
 {
-    printk(KERN_DEBUG "HOOK!!! \n");
+    // //printk(KERN_DEBUG "HOOK!!! \n");
     struct iphdr *iph = ip_hdr(skb);
     node* pos;
     int direction=OUT;
 
     Key* key = kmalloc(sizeof(Key),GFP_ATOMIC);
+    memset(key,0,sizeof(Key));
     struct net_device *dev= outdev;
      if(indev!= NULL){
         direction = IN;
         dev = indev;
-        //printk(KERN_DEBUG "In device :%s\n", dev->name);
+        ////printk(KERN_DEBUG "In device :%s\n", dev->name);
      }
      // if(outdev!=NULL){
-     //    // printk(KERN_DEBUG "Out device: %s\n",dev->name);
+        // //printk(KERN_DEBUG "Out device: %s\n",dev->name);
      // }
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcph = ip_tcp_hdr(iph);
@@ -478,17 +487,17 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         key->dst_port = tcph->dest;
         key->proto = TCP;
         uint8_t flag = *((uint8_t*)tcph+13);
-        printk(KERN_DEBUG "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
-        if(key==NULL)
-            printk(KERN_DEBUG "key is NULL!!!!!!!!!! \n");
-        if(the_table == NULL)
-            printk(KERN_DEBUG "table is NULL!!!!!!!!!! \n");
+        // //printk(KERN_DEBUG "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
+        //if(key==NULL)
+            // //printk(KERN_DEBUG "key is NULL!!!!!!!!!! \n");
+        //if(the_table == NULL)
+            // //printk(KERN_DEBUG "table is NULL!!!!!!!!!! \n");
         if(contains(key,the_table)==1)
         {
-            printk(KERN_DEBUG "HASH TABLE CONTAINS \n ");
-            //return NF_ACCEPT;
+            // //printk(KERN_DEBUG "HASH TABLE CONTAINS \n ");
             Value* value = get(key,the_table);
             Key* key_ = kmalloc(sizeof(struct skb_list),GFP_ATOMIC);
+            memset(key_,0,sizeof(Key));
             key_->src_ip = ntohl(iph->daddr);
             key_->dst_ip = ntohl(iph->saddr);
             key_->src_port = tcph->dest;
@@ -502,38 +511,41 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 if(contains(key_,the_table)==1)
                     delete(key_,the_table);
                 up(&hash_sem);
-                printk(KERN_DEBUG "ACCEPT and recieved FIN --from Hashtable rst is %d, fin is %d\n ",tcph->rst,tcph->fin);
+                // value->state = CLOSED;
+                // get(key_,the_table)->state = CLOSED;
+                // //printk(KERN_DEBUG "ACCEPT and recieved FIN --from Hashtable rst is %d, fin is %d\n ",tcph->rst,tcph->fin);
                 return NF_ACCEPT;
             }
             else if(value->state == OPEN && (tcph->ack && !tcph->syn) ) 
             {
                 value->state = CONNECTED; //has to be chan<p></p>ge 
                 Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
+                memset(v,0,sizeof(Value));
                 v->proto =TCP;
                 v->state = CONNECTED; 
                  if (down_interruptible(&hash_sem))
                     return -ERESTARTSYS;
                 put(key_,v,the_table);
                 up(&hash_sem);
-                printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                // //printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
                 return NF_ACCEPT;
             } 
             else if(value->state == CONNECTED && (tcph->ack && !tcph->syn))
             {
-                 printk(KERN_DEBUG "free key_ 1\n ");
+                 // //printk(KERN_DEBUG "free key_ 1\n ");
                 kfree(key_);
-                printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                // //printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
                 return NF_ACCEPT;
             }
             else
             {
-                printk(KERN_DEBUG "NF_DROP --from Hashtable\n ");
-                printk(KERN_DEBUG "free key_ 2\n ");
+                // //printk(KERN_DEBUG "NF_DROP --from Hashtable\n ");
+                // //printk(KERN_DEBUG "free key_ 2\n ");
                 kfree(key_);
                 return NF_DROP;
             }
         } 
-        printk(KERN_DEBUG "DOES NOT CONTAINS \n");
+        // //printk(KERN_DEBUG "DOES NOT CONTAINS \n");
 
         list_for_each_entry(pos,&rule_head,list)
         {
@@ -588,19 +600,21 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                     return NF_DROP;
                 }
                 Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
+                memset(v,0,sizeof(Value));
                 v->proto =TCP;
                 v->state = OPEN; 
                 if (down_interruptible(&hash_sem))
                     return -ERESTARTSYS;
                 put(key,v,the_table);
                 up(&hash_sem);
-                printk("TCP_ACCEPT -- from list");
+                // //printk("TCP_ACCEPT -- from list");
                 return NF_ACCEPT; 
             }
         }
         return NF_DROP;
     }
-     //kfree(key);
+    // if(key)
+    //     kfree(key);
     if( iph->protocol == IPPROTO_ICMP)
     {
          list_for_each_entry(pos,&rule_head,list)
@@ -625,12 +639,12 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         struct udphdr *udp_h = ip_udp_hdr(iph);
         if(dev == NULL) 
         {
-            printk(KERN_DEBUG "bug!!!!\n");
+            // //printk(KERN_DEBUG "bug!!!!\n");
             return NF_DROP;
         }
         list_for_each_entry(pos,&rule_head,list)
         {
-            printk  (KERN_DEBUG  "dev->name:%s\n",dev->name);
+            // //printk  (KERN_DEBUG  "dev->name:%s\n",dev->name);
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
                 && (pos->dst_ip == ntohl(iph->daddr) || pos->dst_ip == 0)\
                 && (pos->src_port == udp_h->source || pos->src_port == 0)\
@@ -690,7 +704,7 @@ static int __init sniffer_init(void)
     nf_hook_ops_in.priority = hook_prio_in;
     status = nf_register_hook(&nf_hook_ops_in);
     if (status < 0) {
-        printk(KERN_ERR "nf_register_hook failed\n");
+        // //printk(KERN_ERR "nf_register_hook failed\n");
         goto out_add;
     }
 
@@ -701,7 +715,7 @@ static int __init sniffer_init(void)
     nf_hook_ops_out.priority = hook_prio_out;
     status = nf_register_hook(&nf_hook_ops_out);
     if (status < 0) {
-        printk(KERN_ERR "nf_register_hook failed\n");
+        // //printk(KERN_ERR "nf_register_hook failed\n");
         goto out_add;
     }
     return 0;

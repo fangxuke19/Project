@@ -30,7 +30,7 @@ dist: clean
 
 endif
 
-CC = gcc -Wall
+CC = gcc -Wall -g
 
 firewall_control: firewall_control.c 
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) $^ 

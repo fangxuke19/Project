@@ -121,12 +121,12 @@ typedef struct Node
   Key* key;
   Value* value;
   struct Node* next;
-}Node;
+}table_Node;
 typedef struct HashTable
 {
   int size;
   int number_of_pairs;
-  Node ** table;
+  table_Node ** table;
 }HashTable;
 
 HashTable* create(int size);
