@@ -47,6 +47,7 @@ struct nf_hook_ops nf_hook_ops_out;
 HashTable* the_table;
 //semaphores
 struct semaphore dev_sem;
+struct semaphore hash_sem;
 wait_queue_head_t readqueue;
 
 // skb buffer between kernel and user space
@@ -111,16 +112,25 @@ int contains(Key* key,HashTable* hashtable)
 }
 Value* get(Key* key,HashTable* hashtable)
 {
+   //  printk(KERN_DEBUG "88888888888888!!!!!!!!!! \n");
     if(hashtable == NULL) return NULL;
+     //printk(KERN_DEBUG "999999999999!!!!!!!!!! \n");
     uint32_t hash_v =compute_hash_value(key,hashtable);
+     //printk(KERN_DEBUG "101010101010101!!!!!!!!!! \n");
     Node* node = hashtable->table[hash_v];
-
+    //printk(KERN_DEBUG "AAAAAAAAAAAAAAAAA!!!!!!!!!! \n");
+    //if(node==NULL)
+    //printk(KERN_DEBUG "NODE IS WRONG!!!!!!!!!!!! \n");   
     while(node!=NULL)
     {
+      //  printk(KERN_DEBUG "IN WHILE !!!!!!!!!!!!!!!! \n");   
+        //  if(!node->key)
+    //printk(KERN_DEBUG "NODE KEY IS WRONG!!!!!!!!!!!! \n");   
         if(compare_keys(node->key,key))
             return node->value;
         node = node->next;
     }
+     //printk(KERN_DEBUG "OUT WHILE !!!!!!!!!!!!!!!! \n");   
     return NULL;
 }
 int put(Key* key, Value* value,HashTable* hashtable)
@@ -129,7 +139,7 @@ int put(Key* key, Value* value,HashTable* hashtable)
     if(hashtable==NULL) return -1;
     hashtable->number_of_pairs++;
     hash_v =compute_hash_value(key,hashtable);
-    Node* new_node = (Node*)vmalloc(sizeof(Node));
+    Node* new_node = (Node*)kmalloc(sizeof(Node),GFP_ATOMIC);
     Node* temp = hashtable->table[hash_v];
     new_node->value = value;
     new_node->next = temp;
@@ -145,10 +155,15 @@ void delete(Key* key, HashTable* hashtable)
         
     if(node!=NULL && compare_keys(key,node->key)==1)
     {
+        //printk(KERN_DEBUG "DELETING HEAD !!!!!!!!!!!!!!!! \n");   
         Node* temp = node->next;
-        vfree(node->value);
-        vfree(node->key);
-        vfree(node);
+        //printk(KERN_DEBUG "FFFFFFFFFFFFFF !!!!!!!!!!!!!!!! \n");   
+        kfree(node->value);
+        //printk(KERN_DEBUG "GGGGGGGGGGG !!!!!!!!!!!!!!!! \n");   
+        kfree(node->key);
+        //printk(KERN_DEBUG "HHHHHHHHHHHH !!!!!!!!!!!!!!!! \n");   
+        kfree(node);
+        //printk(KERN_DEBUG "IIIIIIIIIIIIIIIIII !!!!!!!!!!!!!!!! \n");   
         hashtable->table[hash_v] = temp;
         hashtable->number_of_pairs--;
         return;
@@ -159,10 +174,14 @@ void delete(Key* key, HashTable* hashtable)
     {
         if(compare_keys(cur->key, key))
         {
+          //  printk(KERN_DEBUG "DELETING !!!!!!!!!!!!!!!! \n");   
             prev->next = cur->next;
-            vfree(cur->value);
-            vfree(cur->key);
-            vfree(cur);
+            //printk(KERN_DEBUG "QQQQQQQQQQQQQQQ!!!!!!!!!!!!!!!! \n");   
+            kfree(cur->value);
+            //printk(KERN_DEBUG "WWWWWWWWWWWWWWWW !!!!!!!!!!!!!!!! \n");   
+            kfree(cur->key);
+            //printk(KERN_DEBUG "EEEEEEEEEEEEEEEEEEE !!!!!!!!!!!!!!!! \n");   
+            kfree(cur);
             hashtable->number_of_pairs--;
             return;
         }
@@ -178,9 +197,13 @@ uint32_t compute_hash_value(Key* key, HashTable* hashtable)
 }
 int compare_keys(Key* this, Key* other)
 {
-
+     printk(KERN_DEBUG "IN THE COMPARE !!!!!!!!!!!!!!!! \n");   
     if( this->proto == other->proto &&this->src_port == other->src_port && this->dst_port == other->dst_port && this->dst_ip == other->dst_ip && this->src_ip == other->src_ip)
+      {
+         printk(KERN_DEBUG " COMPARing !!!!!!!!!!!!!!!! \n");   
         return 1;   
+      }  
+           printk(KERN_DEBUG " COMPARing +++!!!!!!!!!!!!!!!! \n");     
     return 0;
     
 }
@@ -196,9 +219,9 @@ void free_table(HashTable* hashtable)
         {
             temp = node;
             node = node->next;
-            vfree(temp->value);
-            vfree(temp->key);
-            vfree(temp);
+            kfree(temp->value);
+            kfree(temp->key);
+            kfree(temp);
         }
     }   
     vfree(hashtable->table);;
@@ -319,12 +342,19 @@ static long sniffer_fs_ioctl(struct file *file, unsigned int cmd, unsigned long 
     switch(cmd) {
     case SNIFFER_FLOW_ENABLE:
         new_node->mode =1;
+        if (down_interruptible(&dev_sem))
+            return -ERESTARTSYS;
         list_add(&new_node->list,&rule_head);
+        up(&dev_sem);
+
         break;
 
     case SNIFFER_FLOW_DISABLE:
         new_node->mode =0;
+        if (down_interruptible(&dev_sem))
+            return -ERESTARTSYS;
         list_add(&new_node->list,&rule_head);
+        up(&dev_sem);
         break;
     default:
         vfree(new_node);
@@ -421,45 +451,90 @@ static const struct file_operations  proc_fops = {
      .release = single_release,
  };
 
-
 static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         const struct net_device *indev, const struct net_device *outdev,
         int (*okfn) (struct sk_buff*))
 {
+    printk(KERN_DEBUG "HOOK!!! \n");
     struct iphdr *iph = ip_hdr(skb);
     node* pos;
     int direction=OUT;
-   // Key* key = vmalloc(sizeof(Key));
+
+    Key* key = kmalloc(sizeof(Key),GFP_ATOMIC);
     struct net_device *dev= outdev;
      if(indev!= NULL){
         direction = IN;
-         dev = indev;
-    //     printk("In device :%s\n", dev->name);
+        dev = indev;
+        //printk(KERN_DEBUG "In device :%s\n", dev->name);
      }
-     //if(outdev!=NULL){
-    //     printk("Out device: %s\n",dev->name);
-     //}
+     // if(outdev!=NULL){
+     //    // printk(KERN_DEBUG "Out device: %s\n",dev->name);
+     // }
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcph = ip_tcp_hdr(iph);
-        // key->src_ip = ntohl(iph->saddr);
-        // key->dst_ip = ntohl(iph->daddr);
-        // key->src_port = tcph->source;
-        // key->dst_port = tcph->dest;
-        // key->proto = TCP;
-        // if(table.contains(key))
-        // {
-        //     Value* value = table.get(key,table);
-        //     if(value->state == OPEN ) 
-        //     if(value->state == CONNECTED) return NF_ACCEPT;
-        //     if(value->state == HANDSHAKE)
-        // }
-          // printk(KERN_DEBUG "FLAGS=%c%c%c%c%c%c\n\n",
-          //               tcph->urg ? 'U' : '-',
-          //               tcph->ack ? 'A' : '-',
-          //               tcph->psh ? 'P' : '-',
-          //               tcph->rst ? 'R' : '-',
-          //               tcph->syn ? 'S' : '-',
-          //               tcph->fin ? 'F' : '-');
+        key->src_ip = ntohl(iph->saddr);
+        key->dst_ip = ntohl(iph->daddr);
+        key->src_port = tcph->source;
+        key->dst_port = tcph->dest;
+        key->proto = TCP;
+        uint8_t flag = *((uint8_t*)tcph+13);
+        printk(KERN_DEBUG "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
+        if(key==NULL)
+            printk(KERN_DEBUG "key is NULL!!!!!!!!!! \n");
+        if(the_table == NULL)
+            printk(KERN_DEBUG "table is NULL!!!!!!!!!! \n");
+        if(contains(key,the_table)==1)
+        {
+            printk(KERN_DEBUG "HASH TABLE CONTAINS \n ");
+            //return NF_ACCEPT;
+            Value* value = get(key,the_table);
+            Key* key_ = kmalloc(sizeof(struct skb_list),GFP_ATOMIC);
+            key_->src_ip = ntohl(iph->daddr);
+            key_->dst_ip = ntohl(iph->saddr);
+            key_->src_port = tcph->dest;
+            key_->dst_port = tcph->source;
+            key_->proto = TCP;
+            if( (tcph->fin | tcph->rst))
+            {
+                if (down_interruptible(&hash_sem))
+                    return -ERESTARTSYS;
+                delete(key,the_table);
+                if(contains(key_,the_table)==1)
+                    delete(key_,the_table);
+                up(&hash_sem);
+                printk(KERN_DEBUG "ACCEPT and recieved FIN --from Hashtable rst is %d, fin is %d\n ",tcph->rst,tcph->fin);
+                return NF_ACCEPT;
+            }
+            else if(value->state == OPEN && (tcph->ack && !tcph->syn) ) 
+            {
+                value->state = CONNECTED; //has to be chan<p></p>ge 
+                Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
+                v->proto =TCP;
+                v->state = CONNECTED; 
+                 if (down_interruptible(&hash_sem))
+                    return -ERESTARTSYS;
+                put(key_,v,the_table);
+                up(&hash_sem);
+                printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                return NF_ACCEPT;
+            } 
+            else if(value->state == CONNECTED && (tcph->ack && !tcph->syn))
+            {
+                 printk(KERN_DEBUG "free key_ 1\n ");
+                kfree(key_);
+                printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else
+            {
+                printk(KERN_DEBUG "NF_DROP --from Hashtable\n ");
+                printk(KERN_DEBUG "free key_ 2\n ");
+                kfree(key_);
+                return NF_DROP;
+            }
+        } 
+        printk(KERN_DEBUG "DOES NOT CONTAINS \n");
+
         list_for_each_entry(pos,&rule_head,list)
         {
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
@@ -468,57 +543,64 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 && (pos->dst_port == tcph->dest || pos->dst_port == 0) \
                 && (pos->proto == TCP) \
                 && (pos->direction == direction || pos->direction == ALL)\
-                )//&& (strcmp(pos->interface,dev->name)==0))
+                && ((strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0)) )
             {
-                if(pos->action == DPI)
-                {
-                    int length = skb->len;
-                    int p_length = strlen(PATTERN);
-                    int match = 0;
-                    ip_hdr_t* ip_h = (ip_hdr_t *) skb->data;
-                    tcp_hdr_t* tcp_h = (tcp_hdr_t *) ip_h->options_and_data;
-                    unsigned char* data = tcp_h->options_and_data;
-                    int i=0;
-                    for(;i<length;i++)
-                    {
-                        int j =0;
-                        match  =1;
-                        for(;j<p_length;j++)
-                        {
-                            if(data[i+j] != PATTERN[j])     
-                            {
-                                match =0;
-                                break;
-                            }               
-                        }
-                        if(match)
-                            break;
-                    }
-                    if(match)
-                        pos->mode = 0;
-                }
-                if(pos->action == CAPTURING)
-                {
-                    struct skb_list* node= kmalloc(sizeof(struct skb_list),GFP_ATOMIC);   
-                    node->skb = skb_copy(skb,GFP_ATOMIC);
-                    if (down_interruptible(&dev_sem))
-                        return -ERESTARTSYS;
-                    list_add_tail(&node->list,&skbs);
-                    if(list_is_last(&node->list,&skbs));
-                        wake_up_interruptible(&readqueue);
-                    up(&dev_sem);
-                }
+                // if(pos->action == DPI)
+                // {
+                //     int length = skb->len;
+                //     int p_length = strlen(PATTERN);
+                //     int match = 0;
+                //     ip_hdr_t* ip_h = (ip_hdr_t *) skb->data;
+                //     tcp_hdr_t* tcp_h = (tcp_hdr_t *) ip_h->options_and_data;
+                //     unsigned char* data = tcp_h->options_and_data;
+                //     int i=0;
+                //     for(;i<length;i++)
+                //     {
+                //         int j =0;
+                //         match  =1;
+                //         for(;j<p_length;j++)
+                //         {
+                //             if(data[i+j] != PATTERN[j])     
+                //             {
+                //                 match =0;
+                //                 break;
+                //             }               
+                //         }
+                //         if(match)
+                //             break;
+                //     }
+                //     if(match)
+                //         pos->mode = 0;
+                // }
+                // if(pos->action == CAPTURING)
+                // {
+                //     struct skb_list* node= kmalloc(sizeof(struct skb_list),GFP_ATOMIC);   
+                //     node->skb = skb_copy(skb,GFP_ATOMIC);
+                //     if (down_interruptible(&dev_sem))
+                //         return -ERESTARTSYS;
+                //     list_add_tail(&node->list,&skbs);
+                //     if(list_is_last(&node->list,&skbs));
+                //         wake_up_interruptible(&readqueue);
+                //     up(&dev_sem);
+                // }
                 if(pos->mode == 0)
                 {
-                      return NF_DROP;
+                    return NF_DROP;
                 }
-                printk("TCP_ACCEPT");
-
+                Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
+                v->proto =TCP;
+                v->state = OPEN; 
+                if (down_interruptible(&hash_sem))
+                    return -ERESTARTSYS;
+                put(key,v,the_table);
+                up(&hash_sem);
+                printk("TCP_ACCEPT -- from list");
                 return NF_ACCEPT; 
             }
         }
         return NF_DROP;
     }
+     //kfree(key);
     if( iph->protocol == IPPROTO_ICMP)
     {
          list_for_each_entry(pos,&rule_head,list)
@@ -527,7 +609,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 && (pos->dst_ip == ntohl(iph->daddr) || pos->dst_ip == 0)\
                 && (pos->proto == ICMP)
                 && (pos->direction == direction || pos->direction == ALL)\
-                )//&& (strcmp(pos->interface,dev->name)==0))
+                && ((strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0)) )
             {
                 if(pos->mode == 0)
                 {
@@ -555,7 +637,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 && (pos->dst_port == udp_h->dest || pos->dst_port == 0) \
                 && (pos->proto == UDP)
                 && (pos->direction == direction || pos->direction == ALL)\
-                && (strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0) )
+                && ((strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0)) )
             {
                  if(pos->mode == 0)
                 {
@@ -572,7 +654,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
 static int __init sniffer_init(void)
 {
     int status = 0;
-    the_table = create(262139);
+    the_table = create(65521);
     printk(KERN_DEBUG "sniffer_init\n"); 
     if(proc_create("sniffer",0,NULL,&proc_fops)<0)
     {
@@ -598,6 +680,7 @@ static int __init sniffer_init(void)
     INIT_LIST_HEAD(&rule_head);
     init_waitqueue_head(&readqueue);
     sema_init(&dev_sem, 1);
+    sema_init(&hash_sem, 1);
 
     /* register netfilter hook */
     memset(&nf_hook_ops_in, 0, sizeof(nf_hook_ops_in));
