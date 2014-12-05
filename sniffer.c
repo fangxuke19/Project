@@ -180,7 +180,6 @@ void delete(Key* key, HashTable* hashtable)
 }
 uint32_t compute_hash_value(Key* key, HashTable* hashtable)
 {
-
     uint32_t ports = key->src_port ^ key->dst_port;
     return (ports^(key->src_ip^key->dst_ip))%hashtable->size;
 }
@@ -318,6 +317,7 @@ static long sniffer_fs_ioctl(struct file *file, unsigned int cmd, unsigned long 
         new_node->action = converted_arg->action;
         new_node->direction = converted_arg->direction;
         new_node->interface = vmalloc(10*sizeof(char));
+        memset(new_node->interface,0,10*sizeof(char));
         strcpy(new_node->interface,converted_arg->interface);
         if(new_node->interface)
             printk(KERN_DEBUG "INTERFACE:%s", new_node->interface);
@@ -404,7 +404,6 @@ static int sniffer_proc_show(struct seq_file *m, void *v) {
             print_ip(ip,pos->src_ip);
             seq_printf(m,"   %d.%d.%d.%d",ip[3],ip[2],ip[1],ip[0]);
         }
-          
          if(pos->src_port == 0)
             seq_printf(m,"%*s",max_width,any);
         else
@@ -464,14 +463,10 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
     Key* key = kmalloc(sizeof(Key),GFP_ATOMIC);
     memset(key,0,sizeof(Key));
     struct net_device *dev= outdev;
-     if(indev!= NULL){
+    if(indev!= NULL){
         direction = IN;
         dev = indev;
-        ////printk(KERN_DEBUG "In device :%s\n", dev->name);
-     }
-     // if(outdev!=NULL){
-        // //printk(KERN_DEBUG "Out device: %s\n",dev->name);
-     // }
+    }
     if (iph->protocol == IPPROTO_TCP) {
         struct tcphdr *tcph = ip_tcp_hdr(iph);
         key->src_ip = ntohl(iph->saddr);
@@ -480,66 +475,91 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         key->dst_port = tcph->dest;
         key->proto = TCP;
         uint8_t flag = *((uint8_t*)tcph+13);
-        // //printk(KERN_DEBUG "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
-        //if(key==NULL)
-            // //printk(KERN_DEBUG "key is NULL!!!!!!!!!! \n");
-        //if(the_table == NULL)
-            // //printk(KERN_DEBUG "table is NULL!!!!!!!!!! \n");
+        printk(KERN_DEBUG "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
         if(contains(key,the_table)==1)
         {
-            // //printk(KERN_DEBUG "HASH TABLE CONTAINS \n ");
             Value* value = get(key,the_table);
-            Key* key_ = kmalloc(sizeof(struct skb_list),GFP_ATOMIC);
-            memset(key_,0,sizeof(Key));
-            key_->src_ip = ntohl(iph->daddr);
-            key_->dst_ip = ntohl(iph->saddr);
-            key_->src_port = tcph->dest;
-            key_->dst_port = tcph->source;
-            key_->proto = TCP;
-            if( (tcph->fin | tcph->rst))
+            if(flag&RST)
             {
-                // if (down_interruptible(&hash_sem))
-                //     return -ERESTARTSYS;
                 delete(key,the_table);
-                if(contains(key_,the_table)==1)
-                    delete(key_,the_table);
-                // up(&hash_sem);
-                // value->state = CLOSED;
-                // get(key_,the_table)->state = CLOSED;
-                // //printk(KERN_DEBUG "ACCEPT and recieved FIN --from Hashtable rst is %d, fin is %d\n ",tcph->rst,tcph->fin);
+                printk(KERN_DEBUG "ACCEPT RST --from Hashtable rst is %d\n ",tcph->rst);
                 return NF_ACCEPT;
             }
-            else if(value->state == OPEN && (tcph->ack && !tcph->syn) ) 
+            else if(value->state == HALFOPEN && (flag & SYN) && !(flag & ACK)) //retransmitting SYN 
             {
-                value->state = CONNECTED; //has to be chan<p></p>ge 
-                Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
-                memset(v,0,sizeof(Value));
-                v->proto =TCP;
-                v->state = CONNECTED; 
-                 // if (down_interruptible(&hash_sem))
-                 //    return -ERESTARTSYS;
-                put(key_,v,the_table);
-                //up(&hash_sem);
-                // //printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                printk(KERN_DEBUG "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
                 return NF_ACCEPT;
             } 
-            else if(value->state == CONNECTED && (tcph->ack && !tcph->syn))
+            else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
-                 // //printk(KERN_DEBUG "free key_ 1\n ");
-                kfree(key_);
-                // //printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
+                printk(KERN_DEBUG "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
+            {
+                value->state = CLOSING;
+                value->FIN_direction =F_dst;
+                printk(KERN_DEBUG "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_src) //received FIN
+            {
+                delete(key,the_table);
+                printk(KERN_DEBUG "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
                 return NF_ACCEPT;
             }
             else
             {
-                // //printk(KERN_DEBUG "NF_DROP --from Hashtable\n ");
-                // //printk(KERN_DEBUG "free key_ 2\n ");
-                kfree(key_);
+                printk(KERN_DEBUG "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
+                return NF_DROP;
+            }
+        } 
+        //counterpart
+        key->src_ip = ntohl(iph->daddr);
+        key->dst_ip = ntohl(iph->saddr);
+        key->src_port = tcph->dest;
+        key->dst_port = tcph->source;
+        printk(KERN_DEBUG "+++++++%d\n",(flag & SYN|ACK));
+        if(contains(key,the_table)==1)
+        {
+            Value* value = get(key,the_table);
+            if(flag&RST)
+            {
+                delete(key,the_table);
+                printk(KERN_DEBUG "ACCEPT RST --from Hashtable rst is %d\n ",tcph->rst);
+                return NF_ACCEPT;
+            }
+            else if(value->state == HALFOPEN && (flag & SYN|ACK)) //Sending back SYN/ACK 
+            {
+                value->state = CONNECTED;
+                printk(KERN_DEBUG "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
+                return NF_ACCEPT;
+            } 
+            else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
+            {
+                printk(KERN_DEBUG "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
+            {
+                value->state = CLOSING;
+                value->FIN_direction =F_src;
+                printk(KERN_DEBUG "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_dst) //received FIN
+            {
+                delete(key,the_table);
+                printk(KERN_DEBUG "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
+                return NF_ACCEPT;
+            }
+            else
+            {
+                printk(KERN_DEBUG "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
                 return NF_DROP;
             }
         } 
         // //printk(KERN_DEBUG "DOES NOT CONTAINS \n");
-
         list_for_each_entry(pos,&rule_head,list)
         {
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
@@ -550,61 +570,29 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 && (pos->direction == direction || pos->direction == ALL)\
                 && ((strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0)) )
             {
-                // if(pos->action == DPI)
-                // {
-                //     int length = skb->len;
-                //     int p_length = strlen(PATTERN);
-                //     int match = 0;
-                //     ip_hdr_t* ip_h = (ip_hdr_t *) skb->data;
-                //     tcp_hdr_t* tcp_h = (tcp_hdr_t *) ip_h->options_and_data;
-                //     unsigned char* data = tcp_h->options_and_data;
-                //     int i=0;
-                //     for(;i<length;i++)
-                //     {
-                //         int j =0;
-                //         match  =1;
-                //         for(;j<p_length;j++)
-                //         {
-                //             if(data[i+j] != PATTERN[j])     
-                //             {
-                //                 match =0;
-                //                 break;
-                //             }               
-                //         }
-                //         if(match)
-                //             break;
-                //     }
-                //     if(match)
-                //         pos->mode = 0;
-                // }
-                // if(pos->action == CAPTURING)
-                // {
-                //     struct skb_list* node= kmalloc(sizeof(struct skb_list),GFP_ATOMIC);   
-                //     node->skb = skb_copy(skb,GFP_ATOMIC);
-                //     if (down_interruptible(&dev_sem))
-                //         return -ERESTARTSYS;
-                //     list_add_tail(&node->list,&skbs);
-                //     if(list_is_last(&node->list,&skbs));
-                //         wake_up_interruptible(&readqueue);
-                //     up(&dev_sem);
-                // }
-                if(pos->mode == 0)
-                {
-
+                if(pos->mode == 0){
+                    printk("TCP_DROP(Blocked by rule) -- from list\n");
                     return NF_DROP;
                 }
-                Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
-                memset(v,0,sizeof(Value));
-                v->proto =TCP;
-                v->state = OPEN; 
-                // if (down_interruptible(&hash_sem))
-                //     return -ERESTARTSYS;
-                put(key,v,the_table);
-                //up(&hash_sem);
-                // //printk("TCP_ACCEPT -- from list");
-                return NF_ACCEPT; 
+                if(flag&SYN && !(flag&ACK)){
+                    Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
+                    memset(v,0,sizeof(Value));
+                    v->proto =TCP;
+                    v->state = HALFOPEN; 
+                    key->src_ip = ntohl(iph->saddr);
+                    key->dst_ip = ntohl(iph->daddr);
+                    key->src_port = tcph->source;
+                    key->dst_port = tcph->dest;
+                    put(key,v,the_table);
+                    printk("TCP_ACCEPT -- from list");
+                    return NF_ACCEPT; 
+                }else{
+                    printk("TCP_DROP(flag is not SYN) -- from list\n");
+                    return NF_DROP;
+                }
             }
         }
+        printk("TCP_DROP -- from list (no such rule)\n");
         return NF_DROP;
     }
     kfree(key);
@@ -618,6 +606,9 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         key->dst_port = 0;
         key->proto = ICMP;
         key->direction = direction;
+        key->interface = kmalloc(10*sizeof(char),GFP_ATOMIC);
+        memset(key->interface,0,10*sizeof(char));
+        strcpy(key->interface,dev->name);
         if(contains(key,the_table)==1)
         {
             Value* v = get(key,the_table);
@@ -639,7 +630,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 if(pos->mode == 0)
                 {
                     kfree(key);
-                      return NF_DROP;
+                    return NF_DROP;
                 }
                 Value* v = kmalloc(sizeof(Value),GFP_ATOMIC);
                 memset(v,0,sizeof(Value));
@@ -666,6 +657,9 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         key->dst_port = udp_h->dest;
         key->proto = UDP;
         key->direction = direction;
+        key->interface = kmalloc(10*sizeof(char),GFP_ATOMIC);
+        memset(key->interface,0,10*sizeof(char));
+        strcpy(key->interface,dev->name);
         if(contains(key,the_table)==1)
         {
             Value* v = get(key,the_table);

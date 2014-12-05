@@ -102,6 +102,9 @@ typedef struct
   #define CLOSING -9
   #define CLOSED -10
   int direction;
+  int FIN_direction;
+  #define F_dst 0
+  #define F_src 1
 }Value;
 
 typedef struct 
@@ -113,6 +116,7 @@ typedef struct
   uint16_t dst_port;
   int direction;
   int proto;
+  char* interface;
 }Key;
 
 typedef struct Node
