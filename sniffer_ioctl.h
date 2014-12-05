@@ -122,6 +122,7 @@ typedef struct Node
   Value* value;
   struct Node* next;
 }table_Node;
+
 typedef struct HashTable
 {
   int size;

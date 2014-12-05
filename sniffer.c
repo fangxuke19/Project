@@ -297,12 +297,12 @@ static int sniffer_fs_open(struct inode *inode, struct file *file)
     int cindex = iminor(inode);
 
     if (!cdev) {
-        // //printk(KERN_ERR "cdev error\n");
+        printk(KERN_ERR "cdev error\n");
         return -ENODEV;
     }
 
     if (cindex != 0) {
-        // //printk(KERN_ERR "Invalid cindex number %d\n", cindex);
+        printk(KERN_ERR "Invalid cindex number %d\n", cindex);
         return -ENODEV;
     }
 
@@ -505,12 +505,12 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
             key_->proto = TCP;
             if( (tcph->fin | tcph->rst))
             {
-                if (down_interruptible(&hash_sem))
-                    return -ERESTARTSYS;
+                // if (down_interruptible(&hash_sem))
+                //     return -ERESTARTSYS;
                 delete(key,the_table);
                 if(contains(key_,the_table)==1)
                     delete(key_,the_table);
-                up(&hash_sem);
+                // up(&hash_sem);
                 // value->state = CLOSED;
                 // get(key_,the_table)->state = CLOSED;
                 // //printk(KERN_DEBUG "ACCEPT and recieved FIN --from Hashtable rst is %d, fin is %d\n ",tcph->rst,tcph->fin);
@@ -523,10 +523,10 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 memset(v,0,sizeof(Value));
                 v->proto =TCP;
                 v->state = CONNECTED; 
-                 if (down_interruptible(&hash_sem))
-                    return -ERESTARTSYS;
+                 // if (down_interruptible(&hash_sem))
+                 //    return -ERESTARTSYS;
                 put(key_,v,the_table);
-                up(&hash_sem);
+                //up(&hash_sem);
                 // //printk(KERN_DEBUG "ACCEPT --from Hashtable\n ");
                 return NF_ACCEPT;
             } 
@@ -603,10 +603,10 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 memset(v,0,sizeof(Value));
                 v->proto =TCP;
                 v->state = OPEN; 
-                if (down_interruptible(&hash_sem))
-                    return -ERESTARTSYS;
+                // if (down_interruptible(&hash_sem))
+                //     return -ERESTARTSYS;
                 put(key,v,the_table);
-                up(&hash_sem);
+                //up(&hash_sem);
                 // //printk("TCP_ACCEPT -- from list");
                 return NF_ACCEPT; 
             }
@@ -614,7 +614,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         return NF_DROP;
     }
     // if(key)
-    //     kfree(key);
+    kfree(key);
     if( iph->protocol == IPPROTO_ICMP)
     {
          list_for_each_entry(pos,&rule_head,list)
