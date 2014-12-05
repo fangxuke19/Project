@@ -51,8 +51,6 @@ struct sniffer_flow_entry {
   uint8_t time_to_live;
   uint8_t protocol;
   uint8_t checksum[2];
-  // uint8_t src_ip[4];
-  // uint8_t dst_ip[4];
   uint32_t src_ip;
   uint32_t dst_ip;
   uint8_t options_and_data[0];
@@ -113,6 +111,7 @@ typedef struct
   uint32_t dst_ip;
   uint16_t src_port;
   uint16_t dst_port;
+  int direction;
   int proto;
 }Key;
 
