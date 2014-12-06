@@ -66,7 +66,7 @@ int main(int argc, char **argv)
     init_flow(flow);
     struct hostent *h;
     struct in_addr ** addr_list;
-     printf(" argc is %d argv is :%s\n", argc ,*argv);
+    printf(" argc is %d argv is :%s\n", argc ,*argv);
     while(1) {
         static struct option long_options[] = 
         {

@@ -15,7 +15,7 @@ KDIR := /lib/modules/$(KVER)/build
 KSRC := /lib/modules/$(KVER)/source
 PWD := $(shell pwd)
 
-all: default firewall_control sniffer_read hashtable
+all: default firewall_control  hashtable 
 #all: default tester 
 
 default:
@@ -23,20 +23,20 @@ default:
 
 clean: 
 	$(MAKE) -C $(KDIR) SUBDIRS=$(PWD) clean
-	rm -f firewall_control sniffer_read hashtable *.tar.gz *.dev
+	rm -f firewall_control  hashtable *.tar.gz *.dev
 
 dist: clean
 	tar -czf $(DIST_FILE) ../sniffer --exclude=$(DIST_FILE) --exclude=".svn"
 
 endif
 
-CC = gcc -Wall -g
+CC = gcc -Wall -g 
 
 firewall_control: firewall_control.c 
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) $^ 
 
-sniffer_read: sniffer_read.c 
-	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) $^ 
+#sniffer_read: sniffer_read.c 
+#	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) $^ 
 
 hashtable: hashtable.c
 	$(CC) -o $@ $(CFLAGS) $(LDFLAGS) $(EXTRA_CFLAGS) $^ 

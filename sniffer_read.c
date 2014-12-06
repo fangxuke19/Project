@@ -8,12 +8,26 @@
 #include "sniffer_ioctl.h"
 #include <fcntl.h>
 #include "list.h"
+
+#include <linux/cdev.h>
+#include <linux/types.h>
+#include <linux/init.h>
+#include <linux/kernel.h>
+#include <linux/moduleparam.h>
+#include <linux/version.h>
+#include <linux/netdevice.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/inet.h>
+#include <linux/mm.h>
+#include <linux/udp.h>
+#include <linux/fs.h>
 #include <arpa/inet.h>
+#include <pcap/pcap.h>
 static char * program_name;
 static char * dev_file = "sniffer.dev";
 
-#define MAX_BUFF_SIZE 1500
- 
+#define MAX_BUFF_SIZE 65536
+#define dumper_filename "OUT.pcap"
 uint32_t unpack_uint32(const uint8_t* buf) {
     uint32_t val;
     memcpy(&val, buf, sizeof(uint32_t));
@@ -58,7 +72,6 @@ int print_packet(char * pkt, int len)
     printf("\n");
     return 0;
 }
-
 int main(int argc, char **argv)
 {
     int c;
@@ -86,7 +99,22 @@ int main(int argc, char **argv)
         exit(1);
     }
     char* buf = malloc(MAX_BUFF_SIZE);
-	  int count =0;    
+	  int count =0;  
+    
+    char errbuf[PCAP_ERRBUF_SIZE];
+    struct pcap_pkthdr* header = NULL;
+    pcap_t* dumper_handle = pcap_open_dead(DLT_EN10MB, 65535);
+     if (dumper_handle == NULL)
+    {
+    printf("dumper handle error: %s\n", errbuf);
+    return 1;
+    }
+    pcap_dumper_t * dumper = pcap_dump_open(dumper_handle, dumper_filename);
+    if (dumper == NULL)
+    {
+    printf("dumper_t error\n");
+    return 1;
+    }  
     if(output_file)
         if(freopen(output_file,"w",stdout))
         {
@@ -94,7 +122,13 @@ int main(int argc, char **argv)
             exit(1);
         }
     while((count=read(fd,buf,MAX_BUFF_SIZE))>0)
+    {
         print_packet(buf,count);
+        pcap_dump((u_char*)dumper, header, (const u_char*)buf);
+    }
+    pcap_dump_close(dumper);
+    pcap_close(dumper_handle);
+
 
     free(buf);
 

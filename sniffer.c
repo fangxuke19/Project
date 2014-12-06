@@ -73,6 +73,19 @@ typedef struct node
     int action;
     int proto;
 }node;
+
+static void inline Capture(struct sk_buff* skb)
+{
+    printk(KERN_DEBUG "Add to the Capture List");
+    struct skb_list* node= kmalloc(sizeof(struct skb_list),GFP_ATOMIC);   
+    node->skb = skb_copy(skb,GFP_ATOMIC);
+    if (down_interruptible(&dev_sem))
+        return -ERESTARTSYS;
+    list_add_tail(&node->list,&skbs);
+    if(list_is_last(&node->list,&skbs));
+        wake_up_interruptible(&readqueue);
+    up(&dev_sem);
+}
 /* 
 *Hashtable
  */
@@ -245,8 +258,7 @@ sniffer_fs_read(struct file *file, char __user *buf, size_t count, loff_t *pos)
         {
              atomic_set(&refcnt,0);
               return -ERESTARTSYS; 
-        }
-           
+        }  
         if(list_empty(&skbs))           
             return -1;
       //  if (down_interruptible(&dev_sem))
@@ -455,7 +467,6 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         const struct net_device *indev, const struct net_device *outdev,
         int (*okfn) (struct sk_buff*))
 {
-    // //printk(KERN_DEBUG "HOOK!!! \n");
     struct iphdr *iph = ip_hdr(skb);
     node* pos;
     int direction=OUT;
@@ -482,17 +493,20 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
             if(flag&RST)
             {
                 delete(key,the_table);
+                Capture(skb);
                 printk(KERN_DEBUG "ACCEPT RST --from Hashtable rst is %d\n ",tcph->rst);
                 return NF_ACCEPT;
             }
             else if(value->state == HALFOPEN && (flag & SYN) && !(flag & ACK)) //retransmitting SYN 
             {
                 printk(KERN_DEBUG "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
                 printk(KERN_DEBUG "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
@@ -500,12 +514,20 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 value->state = CLOSING;
                 value->FIN_direction =F_dst;
                 printk(KERN_DEBUG "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
-            else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_src) //received FIN
+            else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_src) //received FIN allow FIN/ACK and ACK
             {
                 delete(key,the_table);
                 printk(KERN_DEBUG "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
+                Capture(skb);
+                return NF_ACCEPT;
+            } 
+            else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
+            {
+                printk(KERN_DEBUG "ACCEPT (ACK from dst_ip) CLOSING --from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else
@@ -519,7 +541,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
         key->dst_ip = ntohl(iph->saddr);
         key->src_port = tcph->dest;
         key->dst_port = tcph->source;
-        printk(KERN_DEBUG "+++++++%d\n",(flag & SYN|ACK));
+        //printk(KERN_DEBUG "+++++++%d\n",(flag & SYN|ACK));
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -527,17 +549,20 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
             {
                 delete(key,the_table);
                 printk(KERN_DEBUG "ACCEPT RST --from Hashtable rst is %d\n ",tcph->rst);
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else if(value->state == HALFOPEN && (flag & SYN|ACK)) //Sending back SYN/ACK 
             {
                 value->state = CONNECTED;
                 printk(KERN_DEBUG "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
                 printk(KERN_DEBUG "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
@@ -545,12 +570,20 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 value->state = CLOSING;
                 value->FIN_direction =F_src;
                 printk(KERN_DEBUG "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_dst) //received FIN
             {
                 delete(key,the_table);
                 printk(KERN_DEBUG "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
+                Capture(skb);
+                return NF_ACCEPT;
+            }
+            else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
+            {
+                printk(KERN_DEBUG "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
+                Capture(skb);
                 return NF_ACCEPT;
             }
             else
@@ -559,7 +592,6 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 return NF_DROP;
             }
         } 
-        // //printk(KERN_DEBUG "DOES NOT CONTAINS \n");
         list_for_each_entry(pos,&rule_head,list)
         {
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
@@ -585,6 +617,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                     key->dst_port = tcph->dest;
                     put(key,v,the_table);
                     printk("TCP_ACCEPT -- from list");
+                    Capture(skb);
                     return NF_ACCEPT; 
                 }else{
                     printk("TCP_DROP(flag is not SYN) -- from list\n");
@@ -616,6 +649,7 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 return NF_DROP;
             printk(KERN_DEBUG "ICMP ---Hashtable\n");
             kfree(key);
+            Capture(skb);
            return NF_ACCEPT;
         } 
 
@@ -637,7 +671,8 @@ static unsigned int sniffer_nf_hook(unsigned int hook, struct sk_buff* skb,
                 v->proto =ICMP;
                 v->direction = direction;
                 put(key,v,the_table);
-                    return NF_ACCEPT; 
+                Capture(skb);
+                return NF_ACCEPT; 
             }
         }
         return NF_DROP;
@@ -739,7 +774,7 @@ static int __init sniffer_init(void)
     nf_hook_ops_in.priority = hook_prio_in;
     status = nf_register_hook(&nf_hook_ops_in);
     if (status < 0) {
-        // //printk(KERN_ERR "nf_register_hook failed\n");
+        printk(KERN_ERR "nf_register_hook failed\n");
         goto out_add;
     }
 
@@ -750,7 +785,7 @@ static int __init sniffer_init(void)
     nf_hook_ops_out.priority = hook_prio_out;
     status = nf_register_hook(&nf_hook_ops_out);
     if (status < 0) {
-        // //printk(KERN_ERR "nf_register_hook failed\n");
+        printk(KERN_ERR "nf_register_hook failed\n");
         goto out_add;
     }
     return 0;
