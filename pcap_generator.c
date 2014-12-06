@@ -230,7 +230,7 @@ static int firewall(struct iphdr *iph)
         key->dst_port = tcph->dest;
         key->proto = TCP;
         uint8_t flag = *((uint8_t*)tcph+13);
-        //printf( "TCP from :%x: to :%x src_port:%d dst_port:%d flag:%d \n",iph->saddr,iph->daddr,tcph->source,tcph->dest,flag);
+        printf( "TCP from :%x: to :%x src_port:%d dst_port:%d flag:%d \n",iph->saddr,iph->daddr,tcph->source,tcph->dest,flag);
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -241,35 +241,35 @@ static int firewall(struct iphdr *iph)
             }
             else if(value->state == HALFOPEN && (flag & SYN) && !(flag & ACK)) //retransmitting SYN 
             {
-                //printf( "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
+                printf( "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
                 return 1;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
-                //printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
                 return 1;
             }
             else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
             {
                 value->state = CLOSING;
                 value->FIN_direction =F_dst;
-                //printf( "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
+                printf( "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
                 return 1;
             }
             else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_src) //received FIN allow FIN/ACK and ACK
             {
                 delete(key,the_table);
-                //printf( "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
+                printf( "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
                 return 1;
             } 
             else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
             {
-                //printf( "ACCEPT (ACK from dst_ip) CLOSING --from Hashtable\n ");
+                printf( "ACCEPT (ACK from dst_ip) CLOSING --from Hashtable\n ");
                 return 1;
             }
             else
             {
-                //printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
+                printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
                 return 0;
             }
         } 
@@ -278,7 +278,6 @@ static int firewall(struct iphdr *iph)
         key->dst_ip = ntohl(iph->saddr);
         key->src_port = tcph->dest;
         key->dst_port = tcph->source;
-        //printf( "+++++++%d\n",(flag & SYN|ACK));
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -290,13 +289,13 @@ static int firewall(struct iphdr *iph)
             else if(value->state == HALFOPEN && (flag & (SYN|ACK))) //Sending back SYN/ACK 
             {
                 value->state = CONNECTED;
-                //printf( "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
+                printf( "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
 
                 return 1;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
-                //printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
 
                 return 1;
             }
@@ -304,26 +303,26 @@ static int firewall(struct iphdr *iph)
             {
                 value->state = CLOSING;
                 value->FIN_direction =F_src;
-                //printf( "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
+                printf( "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
 
                 return 1;
             }
             else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_dst) //received FIN
             {
                 delete(key,the_table);
-                //printf( "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
+                printf( "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
 
                 return 1;
             }
             else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
             {
-                //printf( "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
+                printf( "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
 
                 return 1;
             }
             else
             {
-              //  printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
+                printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
                 return 0;
             }
         } 
@@ -336,7 +335,7 @@ static int firewall(struct iphdr *iph)
                 && (pos->proto == TCP) )
             {
                 if(pos->mode == 0){
-                   // printf("TCP_DROP(Blocked by rule) -- from list\n");
+                    printf("TCP_DROP(Blocked by rule) -- from list\n");
                     return 0;
                 }
                 if(flag&SYN && !(flag&ACK)){
@@ -349,16 +348,16 @@ static int firewall(struct iphdr *iph)
                     key->src_port = tcph->source;
                     key->dst_port = tcph->dest;
                     put(key,v,the_table);
-                   // printf("TCP_ACCEPT -- from list");
-    
+                    printf("TCP_ACCEPT -- from list");
+        
                     return 1; 
                 }else{
-                    //printf("TCP_DROP(flag is not SYN) -- from list\n");
+                    printf("TCP_DROP(flag is not SYN) -- from list\n");
                     return 0;
                 }
             }
         }
-       // printf("TCP_DROP -- from list (no such rule)\n");
+        printf("TCP_DROP -- from list (no such rule)\n");
         return 0;
     }
     free(key);
@@ -371,10 +370,6 @@ static int firewall(struct iphdr *iph)
         key->src_port = 0;
         key->dst_port = 0;
         key->proto = ICMP;
-        //key->direction = direction;
-        // key->interface = malloc(10*sizeof(char));
-        //memset(key->interface,0,10*sizeof(char));
-        //strcpy(key->interface,dev->name);
         if(contains(key,the_table)==1)
         {
             Value* v = get(key,the_table);
@@ -388,8 +383,6 @@ static int firewall(struct iphdr *iph)
             if( (pos->src_ip == ntohl(iph->saddr) || pos->src_ip == 0)\
                 && (pos->dst_ip == ntohl(iph->daddr) || pos->dst_ip == 0)\
                 && (pos->proto == ICMP))
-               // && (pos->direction == direction || pos->direction == ALL)\
-                //&& ((strncmp(pos->interface,dev->name,IFNAMSIZ)==0) || (strcmp(pos->interface,"ALL")==0)) )
             {
                 if(pos->mode == 0)
                 {
@@ -399,7 +392,6 @@ static int firewall(struct iphdr *iph)
                 Value* v = malloc(sizeof(Value));
                 memset(v,0,sizeof(Value));
                 v->proto =ICMP;
-               // v->direction = direction;
                 put(key,v,the_table);
 
                 return 1; 
