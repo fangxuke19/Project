@@ -9,6 +9,7 @@
 #include <fcntl.h>
 #include "list.h"
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <pcap/pcap.h>
 #include "headers.h"
 // #include <linux/inet.h>
@@ -229,7 +230,7 @@ static int firewall(struct iphdr *iph)
         key->dst_port = tcph->dest;
         key->proto = TCP;
         uint8_t flag = *((uint8_t*)tcph+13);
-        printf( "TCP from :%pI4: to :%pI4 src_port:%d dst_port:%d flag:%d \n",&iph->saddr,&iph->daddr,tcph->source,tcph->dest,flag);
+        //printf( "TCP from :%x: to :%x src_port:%d dst_port:%d flag:%d \n",iph->saddr,iph->daddr,tcph->source,tcph->dest,flag);
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -240,35 +241,35 @@ static int firewall(struct iphdr *iph)
             }
             else if(value->state == HALFOPEN && (flag & SYN) && !(flag & ACK)) //retransmitting SYN 
             {
-                printf( "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
+                //printf( "ACCEPT(retransmitting SYN) HALFOPEN--from Hashtable\n ");
                 return 1;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
-                printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                //printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
                 return 1;
             }
             else if(value->state == CONNECTED && (flag & ACK) && (flag & FIN)) //received FIN
             {
                 value->state = CLOSING;
                 value->FIN_direction =F_dst;
-                printf( "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
+                //printf( "ACCEPT (FIN from dst_ip) CLOSING--from Hashtable\n ");
                 return 1;
             }
             else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_src) //received FIN allow FIN/ACK and ACK
             {
                 delete(key,the_table);
-                printf( "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
+                //printf( "ACCEPT (FIN from dst_ip) CLOSED --from Hashtable\n ");
                 return 1;
             } 
             else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
             {
-                printf( "ACCEPT (ACK from dst_ip) CLOSING --from Hashtable\n ");
+                //printf( "ACCEPT (ACK from dst_ip) CLOSING --from Hashtable\n ");
                 return 1;
             }
             else
             {
-                printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
+                //printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
                 return 0;
             }
         } 
@@ -289,13 +290,13 @@ static int firewall(struct iphdr *iph)
             else if(value->state == HALFOPEN && (flag & (SYN|ACK))) //Sending back SYN/ACK 
             {
                 value->state = CONNECTED;
-                printf( "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
+                //printf( "ACCEPT( SENDING SYN/ACK) HALFOPEN--from Hashtable\n ");
 
                 return 1;
             } 
             else if(value->state == CONNECTED && !(flag & SYN) && (flag & ACK) && !(flag & FIN)) 
             {
-                printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
+                //printf( "ACCEPT (Transmittin Data) CONNECTED --from Hashtable\n ");
 
                 return 1;
             }
@@ -303,26 +304,26 @@ static int firewall(struct iphdr *iph)
             {
                 value->state = CLOSING;
                 value->FIN_direction =F_src;
-                printf( "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
+                //printf( "ACCEPT (FIN from src_ip) CLOSING--from Hashtable\n ");
 
                 return 1;
             }
             else if(value->state == CLOSING && (flag & ACK) && (flag & FIN) && value->FIN_direction == F_dst) //received FIN
             {
                 delete(key,the_table);
-                printf( "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
+                //printf( "ACCEPT (FIN from src_ip) CLOSED --from Hashtable\n ");
 
                 return 1;
             }
             else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
             {
-                printf( "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
+                //printf( "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
 
                 return 1;
             }
             else
             {
-                printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
+              //  printf( "DROP state is:%d, flag is:%d--from Hashtable\n ",value->state,flag);
                 return 0;
             }
         } 
@@ -335,7 +336,7 @@ static int firewall(struct iphdr *iph)
                 && (pos->proto == TCP) )
             {
                 if(pos->mode == 0){
-                    printf("TCP_DROP(Blocked by rule) -- from list\n");
+                   // printf("TCP_DROP(Blocked by rule) -- from list\n");
                     return 0;
                 }
                 if(flag&SYN && !(flag&ACK)){
@@ -348,16 +349,16 @@ static int firewall(struct iphdr *iph)
                     key->src_port = tcph->source;
                     key->dst_port = tcph->dest;
                     put(key,v,the_table);
-                    printf("TCP_ACCEPT -- from list");
+                   // printf("TCP_ACCEPT -- from list");
     
                     return 1; 
                 }else{
-                    printf("TCP_DROP(flag is not SYN) -- from list\n");
+                    //printf("TCP_DROP(flag is not SYN) -- from list\n");
                     return 0;
                 }
             }
         }
-        printf("TCP_DROP -- from list (no such rule)\n");
+       // printf("TCP_DROP -- from list (no such rule)\n");
         return 0;
     }
     free(key);
@@ -535,11 +536,88 @@ int main(int argc, char **argv)
       INIT_LIST_HEAD(&rule_head);
     int result;
     static unsigned int cmd;
-    struct sniffer_flow_entry* flow = (struct sniffer_flow_entry*)\
-    calloc(1,sizeof(struct sniffer_flow_entry));
-    init_flow(flow);
-    cmd =SNIFFER_FLOW_ENABLE;
-    add_rule(cmd,flow);
+    struct hostent *h;
+    struct in_addr ** addr_list;
+    FILE* rule_f = fopen("rules.txt","r");
+    char line[256];
+    while (fgets(line, sizeof(line), rule_f)) {
+        struct sniffer_flow_entry* flow = (struct sniffer_flow_entry*)\
+        calloc(1,sizeof(struct sniffer_flow_entry));
+        init_flow(flow);
+         printf("%s\n", line);
+         
+        char* p = strtok(line,",");
+        if(strcmp(p,"pass")==0)
+            cmd = SNIFFER_FLOW_ENABLE;
+        else
+            cmd = SNIFFER_FLOW_DISABLE;
+         printf("%s\n",p);
+        p = strtok(NULL,",");
+        if(strcmp(p,"in")==0)
+                flow -> direction = IN;
+        else if(strcmp(p,"out"))
+        {
+            flow -> direction = OUT;
+        }
+        printf("%s\n",p);
+        p = strtok(NULL,",");
+        if(strlen(p)<=9)
+                strcpy(flow->interface,p);
+        printf("%s\n",p);
+        p = strtok(NULL,",");
+        if(strcmp(p,"tcp")==0){
+                flow -> proto = TCP;                
+            }
+            else if(strcmp(p,"udp")==0){
+                flow -> proto = UDP;   
+            }
+            else{
+                flow -> proto = ICMP;                
+            }
+        printf("%s\n",p);
+        p = strtok(NULL,",");
+        if ((h = gethostbyname(p)) == NULL) {
+          perror("gethostbyname failed \n");
+            exit(1);
+        }
+        addr_list = (struct in_addr **)h->h_addr_list;
+        int i = 0;
+        for(; addr_list[i] != NULL; i++) {
+             memset(&flow->src_ip,0,sizeof(uint32_t));
+              flow->src_ip = ntohl(addr_list[i]->s_addr);
+              break;
+        }
+        printf("%s\n",p);
+        p = strtok(NULL,",");
+         memset(&flow->src_port,0,sizeof(uint16_t));
+             flow->src_port = ntohs(atoi(p));
+
+        printf("%s\n",p);
+        p = strtok(NULL,",");
+        if ((h = gethostbyname(p)) == NULL) {
+            perror("gethostbyname failed \n");
+            exit(1);
+            }
+            addr_list = (struct in_addr **)h->h_addr_list;
+            i = 0;
+            for(; addr_list[i] != NULL; i++) {
+                memset(&flow->dst_ip,0,sizeof(uint32_t));
+                flow->dst_ip = ntohl(addr_list[i]->s_addr);
+                break;
+            }
+        printf("%s\n",p);
+         p = strtok(NULL,",");
+         memset(&flow->dst_port,0,sizeof(uint16_t));
+             flow->dst_port = ntohs(atoi(p));
+        printf("%s\n",p );
+        add_rule(cmd,flow);
+        //init_flow(flow);
+    }
+    fclose(rule_f);
+
+   
+    // cmd =SNIFFER_FLOW_ENABLE;
+    // add_rule(cmd,flow);
     const ethernet_hdr_t* e_header =NULL;
     const uint8_t* packet = NULL;
     struct pcap_pkthdr* header = NULL;
@@ -575,7 +653,7 @@ int main(int argc, char **argv)
             {
                 struct iphdr* ipd = (const struct iphdr*) e_header->data;
                 if(firewall(ipd) ==1)
-                    pcap_dump((u_char*)dumper, header, &packet);
+                    pcap_dump((u_char*)dumper, header,(const u_char*)packet);
             }
         }
     }
