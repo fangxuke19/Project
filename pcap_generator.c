@@ -108,6 +108,7 @@ int isEmpty(HashTable* hashtable) //if empty 0, not empty 1
 }
 int contains(Key* key,HashTable* hashtable)
 {
+     if(hashtable==NULL)printf("called!!!!\n");
     if(get(key,hashtable)!=NULL)
         return 1;
     return 0;
@@ -180,6 +181,7 @@ uint32_t compute_hash_value(Key* key, HashTable* hashtable)
 }
 int compare_keys(Key* this, Key* other)
 {
+    printf("this.src_ip%x,other.src_ip%x\n",this->src_ip,other->src_ip );
     if( this->proto == other->proto &&this->src_port == other->src_port && this->dst_port == other->dst_port && this->dst_ip == other->dst_ip && this->src_ip == other->src_ip)
       {
         return 1;   
@@ -226,11 +228,11 @@ static int firewall(struct iphdr *iph)
         struct tcphdr *tcph = ip_tcp_hdr(iph);
         key->src_ip = ntohl(iph->saddr);
         key->dst_ip = ntohl(iph->daddr);
-        key->src_port = tcph->source;
-        key->dst_port = tcph->dest;
+        key->src_port = htons(tcph->source);
+        key->dst_port = htons(tcph->dest);
         key->proto = TCP;
         uint8_t flag = *((uint8_t*)tcph+13);
-        printf( "TCP from :%x: to :%x src_port:%d dst_port:%d flag:%d \n",iph->saddr,iph->daddr,tcph->source,tcph->dest,flag);
+        printf( "TCP from :%x: to :%x src_port:%d dst_port:%d flag:%d \n",ntohl(iph->saddr),ntohl(iph->daddr),htons(tcph->source),htons(tcph->dest),flag);
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -276,8 +278,8 @@ static int firewall(struct iphdr *iph)
         //counterpart
         key->src_ip = ntohl(iph->daddr);
         key->dst_ip = ntohl(iph->saddr);
-        key->src_port = tcph->dest;
-        key->dst_port = tcph->source;
+        key->src_port = htons(tcph->dest);
+        key->dst_port = htons(tcph->source);
         if(contains(key,the_table)==1)
         {
             Value* value = get(key,the_table);
@@ -317,7 +319,6 @@ static int firewall(struct iphdr *iph)
             else if(value->state == CLOSING &&  (flag & ACK) && !(flag & FIN)) //allow ack to go out
             {
                 printf( "ACCEPT (ACK from src_ip) CLOSING --from Hashtable\n ");
-
                 return 1;
             }
             else
@@ -345,8 +346,8 @@ static int firewall(struct iphdr *iph)
                     v->state = HALFOPEN; 
                     key->src_ip = ntohl(iph->saddr);
                     key->dst_ip = ntohl(iph->daddr);
-                    key->src_port = tcph->source;
-                    key->dst_port = tcph->dest;
+                    key->src_port = htons(tcph->source);
+                    key->dst_port = htons(tcph->dest);
                     put(key,v,the_table);
                     printf("TCP_ACCEPT -- from list");
         
@@ -360,6 +361,7 @@ static int firewall(struct iphdr *iph)
         printf("TCP_DROP -- from list (no such rule)\n");
         return 0;
     }
+
     free(key);
     if( iph->protocol == IPPROTO_ICMP)
     {
@@ -406,8 +408,8 @@ static int firewall(struct iphdr *iph)
         memset(key,0,sizeof(Key));
         key->src_ip = ntohl(iph->saddr);
         key->dst_ip = ntohl(iph->daddr);
-        key->src_port = udp_h->source;
-        key->dst_port = udp_h->dest;
+        key->src_port =htons(udp_h->source);
+        key->dst_port = htons(udp_h->dest);
         key->proto = UDP;
         //key->direction = direction;
         // key->interface = malloc(10*sizeof(char));
@@ -527,6 +529,7 @@ int main(int argc, char **argv)
 {
       INIT_LIST_HEAD(&rule_head);
     int result;
+    the_table = create(65521);
     static unsigned int cmd;
     struct hostent *h;
     struct in_addr ** addr_list;
