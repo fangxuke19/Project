@@ -216,12 +216,9 @@ static inline struct udphdr * ip_udp_hdr(struct iphdr *iph)
     struct udphdr *udph = (void *) iph + iph->ihl*4;
     return udph;
 }
-
 static int firewall(struct iphdr *iph)
-{
-  
+{ 
     node* pos;
-
     Key* key = malloc(sizeof(Key));
     memset(key,0,sizeof(Key));
     if (iph->protocol == IPPROTO_TCP) {
@@ -542,7 +539,6 @@ int main(int argc, char **argv)
     calloc(1,sizeof(struct sniffer_flow_entry));
     init_flow(flow);
     cmd =SNIFFER_FLOW_ENABLE;
-    printf("hahahha\n");
     add_rule(cmd,flow);
     const ethernet_hdr_t* e_header =NULL;
     const uint8_t* packet = NULL;
