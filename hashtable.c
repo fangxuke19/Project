@@ -1,5 +1,5 @@
 #include "hashtable.h"
-
+//hello world
 HashTable* create(int size)
 {
 	HashTable* the_table =malloc(sizeof(HashTable));
